@@ -32,7 +32,7 @@ var LOLBinsBypass = map[string]bool{
 	"odbcconf.exe": true, "msiexec.exe": true, "control.exe": true, "csc.exe": true,
 	"jsc.exe": true, "vbc.exe": true, "appsyncpublishingserver.exe": true, "dnscmd.exe": true,
 	"ftp.exe": true, "mavinject.exe": true, "microsoft.workflow.compiler.exe": true,
-	"msdeploy.exe": true, "msdt.exe": true, "msiexec.exe": true, "pcwrun.exe": true,
+	"msdeploy.exe": true, "msdt.exe": true, "pcwrun.exe": true,
 	"presentationhost.exe": true, "syncappvpublishingserver.exe": true, "te.exe": true,
 	"tracker.exe": true,
 }

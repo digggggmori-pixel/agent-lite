@@ -13,11 +13,13 @@ import (
 )
 
 var (
-	modkernel32        = syscall.NewLazyDLL("kernel32.dll")
-	modnetapi32        = syscall.NewLazyDLL("netapi32.dll")
-	procGetVersionExW  = modkernel32.NewProc("GetVersionExW")
-	procNetWkstaGetInfo = modnetapi32.NewProc("NetWkstaGetInfo")
+	modkernel32          = syscall.NewLazyDLL("kernel32.dll")
+	modnetapi32          = syscall.NewLazyDLL("netapi32.dll")
+	modntdll             = syscall.NewLazyDLL("ntdll.dll")
+	procGetVersionExW    = modkernel32.NewProc("GetVersionExW")
+	procNetWkstaGetInfo  = modnetapi32.NewProc("NetWkstaGetInfo")
 	procNetApiBufferFree = modnetapi32.NewProc("NetApiBufferFree")
+	procRtlGetVersion    = modntdll.NewProc("RtlGetVersion")
 )
 
 // OSVERSIONINFOEXW structure
@@ -108,12 +110,12 @@ func getDomainName() (string, error) {
 
 func getOSVersion() (string, error) {
 	// Use RtlGetVersion as GetVersionEx is deprecated and may return incorrect values
-	var version windows.OsVersionInfoEx
+	var version OSVERSIONINFOEXW
 	version.OSVersionInfoSize = uint32(unsafe.Sizeof(version))
 
-	err := windows.RtlGetVersion(&version)
-	if err != nil {
-		return "", err
+	ret, _, _ := procRtlGetVersion.Call(uintptr(unsafe.Pointer(&version)))
+	if ret != 0 {
+		return "", fmt.Errorf("RtlGetVersion failed: %d", ret)
 	}
 
 	// Determine Windows version name
