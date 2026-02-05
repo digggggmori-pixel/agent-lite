@@ -435,7 +435,7 @@ var MicrosoftServiceWhitelist = map[string]bool{
 	// Windows Defender services
 	"windefend": true, "wdnissvc": true, "mdcoresvc": true,
 	// Windows Update services
-	"wuauserv": true, "trustedinstaller": true, "dosvc": true,
+	"trustedinstaller": true, "dosvc": true,
 	// Other common services
 	"appinfo": true, "appidsvc": true, "appxsvc": true,
 	"diagtrack": true, "diagsvc": true,
