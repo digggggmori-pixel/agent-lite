@@ -39,6 +39,12 @@ func (d *Detector) DetectLOLBins(processes []types.ProcessInfo) []types.Detectio
 		nameLower := strings.ToLower(proc.Name)
 
 		if AllLOLBins[nameLower] {
+			// Skip common Windows shell processes running normally
+			// Only flag when there's suspicious context
+			if isNormalWindowsShell(nameLower, proc.Path, proc.CommandLine, proc.ParentName) {
+				continue
+			}
+
 			category := LOLBinCategory(nameLower)
 			severity := determineLOLBinSeverity(nameLower, proc.CommandLine)
 
@@ -65,6 +71,79 @@ func (d *Detector) DetectLOLBins(processes []types.ProcessInfo) []types.Detectio
 	}
 
 	return detections
+}
+
+// isNormalWindowsShell checks if a LOLBin is running as a normal Windows shell process
+// Returns true if it should be skipped (normal operation)
+func isNormalWindowsShell(name, path, cmdline, parentName string) bool {
+	nameLower := strings.ToLower(name)
+	pathLower := strings.ToLower(path)
+	parentLower := strings.ToLower(parentName)
+
+	// Common Windows shell processes that run normally
+	shellProcesses := map[string]bool{
+		"explorer.exe":   true,
+		"cmd.exe":        true,
+		"powershell.exe": true,
+		"pwsh.exe":       true,
+	}
+
+	if !shellProcesses[nameLower] {
+		return false // Not a shell process, don't skip
+	}
+
+	// Check if running from legitimate Windows paths
+	legitimatePaths := []string{
+		`c:\windows\`,
+		`c:\windows\system32\`,
+		`c:\windows\syswow64\`,
+		`c:\program files\powershell\`,
+	}
+
+	isLegitPath := false
+	for _, legitPath := range legitimatePaths {
+		if strings.HasPrefix(pathLower, legitPath) {
+			isLegitPath = true
+			break
+		}
+	}
+
+	if !isLegitPath {
+		return false // Non-standard path, flag it
+	}
+
+	// If command line has suspicious patterns, don't skip
+	if hasSuspiciousArgs(cmdline) {
+		return false
+	}
+
+	// Normal parents for shell processes
+	normalParents := map[string]bool{
+		"":                    true, // No parent info
+		"explorer.exe":        true,
+		"windowsterminal.exe": true,
+		"code.exe":            true,
+		"conhost.exe":         true,
+		"cmd.exe":             true,
+		"powershell.exe":      true,
+		"pwsh.exe":            true,
+		"svchost.exe":         true,
+		"services.exe":        true,
+		"userinit.exe":        true,
+		"winlogon.exe":        true,
+	}
+
+	// For explorer.exe, it's almost always normal when from Windows path
+	if nameLower == "explorer.exe" && isLegitPath {
+		return true
+	}
+
+	// For cmd/powershell, check if parent is normal
+	if normalParents[parentLower] {
+		return true
+	}
+
+	return false
 }
 
 // DetectChains detects suspicious parent-child process chains
@@ -178,6 +257,11 @@ func (d *Detector) DetectSuspiciousPorts(connections []types.NetworkConnection) 
 		// Check local port for listening services
 		if conn.State == "LISTEN" {
 			if description, suspicious := SuspiciousPorts[conn.LocalPort]; suspicious {
+				// Skip standard Windows services (System process PID 4)
+				if isStandardWindowsService(conn.LocalPort, conn.OwningPID) {
+					continue
+				}
+
 				connCopy := conn
 				detection := types.Detection{
 					ID:          fmt.Sprintf("listen-%d-%d", conn.OwningPID, time.Now().UnixNano()),
@@ -199,6 +283,25 @@ func (d *Detector) DetectSuspiciousPorts(connections []types.NetworkConnection) 
 	}
 
 	return detections
+}
+
+// isStandardWindowsService checks if a port is a standard Windows service
+// that should not be flagged (e.g., SMB, NetBIOS from System process)
+func isStandardWindowsService(port uint16, pid uint32) bool {
+	// Standard Windows ports from System process (PID 4)
+	standardPorts := map[uint16]bool{
+		139: true, // NetBIOS Session Service
+		445: true, // SMB (Server Message Block)
+		137: true, // NetBIOS Name Service
+		138: true, // NetBIOS Datagram Service
+	}
+
+	// These ports are normal when from System (PID 4) or smss/lsass
+	if standardPorts[port] && (pid == 4 || pid == 0) {
+		return true
+	}
+
+	return false
 }
 
 // DetectPathAnomalies detects suspicious process paths
