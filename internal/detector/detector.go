@@ -79,12 +79,21 @@ func (d *Detector) DetectChains(processes []types.ProcessInfo) []types.Detection
 		if suspiciousChildren, exists := SuspiciousChains[parentName]; exists {
 			for _, suspChild := range suspiciousChildren {
 				if childName == suspChild {
+					// Check if this is a developer-friendly chain that should be reduced severity
+					severity := types.SeverityHigh
+					confidence := 0.85
+
+					if isDeveloperFriendlyChain(parentName, childName, proc.ParentPath) {
+						severity = types.SeverityLow
+						confidence = 0.4
+					}
+
 					procCopy := proc
 					detection := types.Detection{
 						ID:          fmt.Sprintf("chain-%d-%d", proc.PID, time.Now().UnixNano()),
 						Type:        types.DetectionTypeChain,
-						Severity:    types.SeverityHigh,
-						Confidence:  0.85,
+						Severity:    severity,
+						Confidence:  confidence,
 						Timestamp:   proc.CreateTime,
 						Description: fmt.Sprintf("Suspicious chain: %s → %s", proc.ParentName, proc.Name),
 						Process:     &procCopy,
@@ -99,6 +108,42 @@ func (d *Detector) DetectChains(processes []types.ProcessInfo) []types.Detection
 	}
 
 	return detections
+}
+
+// isDeveloperFriendlyChain checks if a chain is likely from legitimate developer activity
+func isDeveloperFriendlyChain(parent, child, parentPath string) bool {
+	parentLower := strings.ToLower(parent)
+	parentPathLower := strings.ToLower(parentPath)
+
+	// Developer tools that commonly spawn cmd/powershell
+	developerParents := map[string]bool{
+		"python.exe":  true,
+		"python3.exe": true,
+		"node.exe":    true,
+		"ruby.exe":    true,
+		"php.exe":     true,
+		"java.exe":    true,
+		"javaw.exe":   true,
+	}
+
+	if developerParents[parentLower] {
+		// Check if running from legitimate development paths
+		legitDevPaths := []string{
+			`\programs\python`,
+			`\python`,
+			`\nodejs\`,
+			`\program files\`,
+			`\appdata\local\programs\`,
+		}
+
+		for _, path := range legitDevPaths {
+			if strings.Contains(parentPathLower, path) {
+				return true
+			}
+		}
+	}
+
+	return false
 }
 
 // DetectSuspiciousPorts detects connections to suspicious ports
@@ -166,6 +211,11 @@ func (d *Detector) DetectPathAnomalies(processes []types.ProcessInfo) []types.De
 			continue
 		}
 
+		// Skip known legitimate temp folder applications
+		if isLegitTempApplication(proc.Path) {
+			continue
+		}
+
 		for j, pattern := range d.pathPatterns {
 			if pattern.MatchString(proc.Path) {
 				procCopy := proc
@@ -210,11 +260,22 @@ func (d *Detector) DetectTyposquatting(processes []types.ProcessInfo) []types.De
 			continue
 		}
 
+		// Skip if running from legitimate software paths (reduces false positives)
+		if isLegitimateInstallPath(proc.Path) {
+			continue
+		}
+
 		for targetName, expectedPath := range TyposquatTargets {
 			targetLower := strings.ToLower(targetName)
 
 			// Check if name is similar but not exact
+			// Only flag if: 1) name similar AND 2) path is suspicious (not in Program Files, etc.)
 			if nameLower != targetLower && isSimilar(nameLower, targetLower) {
+				// Additional check: only flag if path looks suspicious
+				if proc.Path != "" && !isSuspiciousPath(proc.Path) {
+					continue // Skip if path is legitimate
+				}
+
 				procCopy := proc
 				detection := types.Detection{
 					ID:          fmt.Sprintf("typo-%d-%d", proc.PID, time.Now().UnixNano()),
@@ -491,4 +552,113 @@ func isValidSystemPath(path, processName string) bool {
 	}
 
 	return false
+}
+
+// isLegitimateInstallPath checks if a path is a legitimate software installation path
+func isLegitimateInstallPath(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	pathLower := strings.ToLower(path)
+
+	// Legitimate installation paths
+	legitimatePaths := []string{
+		`c:\program files\`,
+		`c:\program files (x86)\`,
+		`c:\windows\`,
+		`\appdata\local\programs\`,
+		`\appdata\local\microsoft\`,
+		`\appdata\local\google\`,
+		`\appdata\local\slack\`,
+		`\appdata\local\discord\`,
+	}
+
+	for _, legitPath := range legitimatePaths {
+		if strings.Contains(pathLower, legitPath) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isLegitTempApplication checks if a temp folder executable is a known legitimate application
+func isLegitTempApplication(path string) bool {
+	if path == "" {
+		return false
+	}
+
+	pathLower := strings.ToLower(path)
+
+	// Known legitimate temp folder applications
+	legitTempPatterns := []string{
+		`\temp\vscode-`,           // VSCode auto-updater
+		`\temp\chrome_`,           // Chrome installer/updater
+		`\temp\discord`,           // Discord updater
+		`\temp\slack`,             // Slack updater
+		`\temp\teams`,             // Teams updater
+		`\temp\\.net\`,            // .NET runtime
+		`\temp\go-build`,          // Go build cache
+		`\temp\pip-`,              // Python pip
+		`\temp\npm-`,              // npm cache
+		`\temp\yarn-`,             // Yarn cache
+	}
+
+	for _, pattern := range legitTempPatterns {
+		if strings.Contains(pathLower, pattern) {
+			return true
+		}
+	}
+
+	return false
+}
+
+// isSuspiciousPath checks if a path is typically used by malware
+func isSuspiciousPath(path string) bool {
+	if path == "" {
+		return true // No path = suspicious
+	}
+
+	pathLower := strings.ToLower(path)
+
+	// Suspicious paths commonly used by malware
+	suspiciousPaths := []string{
+		`\temp\`,
+		`\tmp\`,
+		`\users\public\`,
+		`\programdata\`,
+		`\appdata\roaming\`,
+		`\recycler\`,
+		`\$recycle.bin\`,
+		`\downloads\`,
+		`\desktop\`,
+	}
+
+	for _, suspPath := range suspiciousPaths {
+		if strings.Contains(pathLower, suspPath) {
+			return true
+		}
+	}
+
+	// If path doesn't start with common legitimate prefixes, it's suspicious
+	legitimatePrefixes := []string{
+		`c:\program files`,
+		`c:\windows`,
+	}
+
+	hasLegitimatePrefix := false
+	for _, prefix := range legitimatePrefixes {
+		if strings.HasPrefix(pathLower, prefix) {
+			hasLegitimatePrefix = true
+			break
+		}
+	}
+
+	// AppData\Local\Programs is legitimate
+	if strings.Contains(pathLower, `\appdata\local\programs\`) {
+		hasLegitimatePrefix = true
+	}
+
+	return !hasLegitimatePrefix
 }
