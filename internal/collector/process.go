@@ -176,10 +176,28 @@ func getProcessUser(handle windows.Handle) (string, error) {
 	return fmt.Sprintf("%s\\%s", domain, account), nil
 }
 
-// checkAdminPrivileges checks if running with admin privileges
+// checkAdminPrivileges checks if running with admin privileges (elevated)
 func checkAdminPrivileges() bool {
+	// Method 1: Check token elevation
+	var token windows.Token
+	proc := windows.CurrentProcess()
+	err := windows.OpenProcessToken(proc, windows.TOKEN_QUERY, &token)
+	if err != nil {
+		return false
+	}
+	defer token.Close()
+
+	// Check if token is elevated
+	var elevation uint32
+	var returnedLen uint32
+	err = windows.GetTokenInformation(token, windows.TokenElevation, (*byte)(unsafe.Pointer(&elevation)), 4, &returnedLen)
+	if err == nil && elevation != 0 {
+		return true
+	}
+
+	// Method 2: Fallback - Check if member of Administrators group
 	var sid *windows.SID
-	err := windows.AllocateAndInitializeSid(
+	err = windows.AllocateAndInitializeSid(
 		&windows.SECURITY_NT_AUTHORITY,
 		2,
 		windows.SECURITY_BUILTIN_DOMAIN_RID,
@@ -190,15 +208,6 @@ func checkAdminPrivileges() bool {
 		return false
 	}
 	defer windows.FreeSid(sid)
-
-	// Get current process token
-	var token windows.Token
-	proc := windows.CurrentProcess()
-	err = windows.OpenProcessToken(proc, windows.TOKEN_QUERY, &token)
-	if err != nil {
-		return false
-	}
-	defer token.Close()
 
 	member, err := token.IsMember(sid)
 	if err != nil {
