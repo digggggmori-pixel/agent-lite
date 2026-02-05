@@ -8,10 +8,10 @@ import (
 	"os"
 	"time"
 
-	"github.com/agent-hunter/agent-lite/internal/collector"
-	"github.com/agent-hunter/agent-lite/internal/detector"
-	"github.com/agent-hunter/agent-lite/internal/output"
-	"github.com/agent-hunter/agent-lite/pkg/types"
+	"github.com/digggggmori-pixel/agent-lite/internal/collector"
+	"github.com/digggggmori-pixel/agent-lite/internal/detector"
+	"github.com/digggggmori-pixel/agent-lite/internal/output"
+	"github.com/digggggmori-pixel/agent-lite/pkg/types"
 	"github.com/google/uuid"
 )
 

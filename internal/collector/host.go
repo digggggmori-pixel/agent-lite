@@ -8,7 +8,7 @@ import (
 	"syscall"
 	"unsafe"
 
-	"github.com/agent-hunter/agent-lite/pkg/types"
+	"github.com/digggggmori-pixel/agent-lite/pkg/types"
 	"golang.org/x/sys/windows"
 )
 

@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/agent-hunter/agent-lite/pkg/types"
+	"github.com/digggggmori-pixel/agent-lite/pkg/types"
 )
 
 // Detector is the main detection engine

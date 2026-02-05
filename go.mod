@@ -1,4 +1,4 @@
-module github.com/agent-hunter/agent-lite
+module github.com/digggggmori-pixel/agent-lite
 
 go 1.21
 
