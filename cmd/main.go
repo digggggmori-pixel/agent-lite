@@ -48,6 +48,21 @@ func init() {
 }
 
 func main() {
+	// Find command first, then parse flags
+	// This allows: "scan --debug" or "--debug scan"
+	command := ""
+	var newArgs []string
+
+	for _, arg := range os.Args[1:] {
+		if arg == "scan" || arg == "status" || arg == "version" {
+			command = arg
+		} else {
+			newArgs = append(newArgs, arg)
+		}
+	}
+
+	// Reset os.Args for flag.Parse to work with remaining args
+	os.Args = append([]string{os.Args[0]}, newArgs...)
 	flag.Parse()
 
 	if showHelp {
@@ -60,13 +75,11 @@ func main() {
 		return
 	}
 
-	args := flag.Args()
-	if len(args) == 0 {
+	if command == "" {
 		printUsage()
 		return
 	}
 
-	command := args[0]
 	switch command {
 	case "scan":
 		runScan()
